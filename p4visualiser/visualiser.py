@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+
 # to view the visualiser run streamlit run visualiser.py
 
 st.title('Prosperity 4 Data Visualiser')
@@ -12,9 +13,6 @@ uploaded_file = st.file_uploader('Upload trade history here')
 if uploaded_file:
     df = pd.read_csv(uploaded_file, sep=';')
 
-    st.header('Data Statstics')
-    st.write(df.describe())
-
     st.header('Data Header')
     st.write(df.head())
 
@@ -24,4 +22,6 @@ if uploaded_file:
     ax.set_xlabel('timestamp')
     ax.set_ylabel('bid_price_1')
 
+
     st.pyplot(fig)
+
