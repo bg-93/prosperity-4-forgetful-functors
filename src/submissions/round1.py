@@ -64,14 +64,19 @@ class MarketMakingStrategy(Strategy):
         to_buy = self.limit - position
         to_sell = self.limit + position
 
+        max_clip = 10
+
+        bid_size = max(0, min(max_clip, self.limit - position))
+        ask_size = max(0, min(max_clip, self.limit + position))
+
         #array appending whether or not position has pinned to the limit
         self.window.append(abs(position) == self.limit)
         if len(self.window) > self.window_size:
             self.window.popleft()
 
         #variables indicating how often we are hitting our position limit
-        soft_liquidate = len(self.window) == self.window_size and sum(self.window) >= self.window_size / 2 and self.window[-1]
-        hard_liquidate = len(self.window) == self.window_size and all(self.window)
+        #soft_liquidate = len(self.window) == self.window_size and sum(self.window) >= self.window_size / 2 and self.window[-1]
+        #hard_liquidate = len(self.window) == self.window_size and all(self.window)
 
         #defining our max and min buy and sell prices around true value
         max_buy_price = true_value - 1 if position > self.limit * 0.5 else true_value
@@ -86,24 +91,24 @@ class MarketMakingStrategy(Strategy):
 
         # if we have enough position to buy, and for the past 10 ticks weve hit our
         # limit then we need to buy more( reducing risk from being stuck at short limit)
-        if to_buy > 0 and hard_liquidate:
+        '''if to_buy > 0 and hard_liquidate:
             quantity = to_buy // 2
             self.buy(true_value, quantity)
-            to_buy -= quantity
+            to_buy -= quantity'''
 
         # same as above but for less amount of previous ticks we've hit our limit
         # still need to buy more but less aggressively
-        if to_buy > 0 and soft_liquidate:
+        '''if to_buy > 0 and soft_liquidate:
             quantity = to_buy // 2
             self.buy(true_value - 2, quantity)
-            to_buy -= quantity
+            to_buy -= quantity'''
 
         # if we have enough position to buy, then place a bid that beats the most popular bid
         # by 1
         if to_buy > 0 and buy_orders:
-            popular_buy_price = max(buy_orders, key=lambda tup: tup[1])[0]
+            popular_buy_price = buy_orders[0][0]
             price = min(max_buy_price, popular_buy_price + 1)
-            self.buy(price, to_buy)
+            self.buy(price, bid_size)
 
         # the following is symmetric for sell side
         for price, volume in buy_orders:
@@ -112,20 +117,20 @@ class MarketMakingStrategy(Strategy):
                 self.sell(price, quantity)
                 to_sell -= quantity
 
-        if to_sell > 0 and hard_liquidate:
+        '''if to_sell > 0 and hard_liquidate:
             quantity = to_sell // 2
             self.sell(true_value, quantity)
-            to_sell -= quantity
+            to_sell -= quantity'''
 
-        if to_sell > 0 and soft_liquidate:
+        '''if to_sell > 0 and soft_liquidate:
             quantity = to_sell // 2
             self.sell(true_value + 2, quantity)
-            to_sell -= quantity
+            to_sell -= quantity'''
 
         if to_sell > 0 and sell_orders:
-            popular_sell_price = min(sell_orders, key=lambda tup: tup[1])[0]
+            popular_sell_price = sell_orders[0][0]
             price = max(min_sell_price, popular_sell_price - 1)
-            self.sell(price, to_sell)
+            self.sell(price, ask_size)
 
     def save(self) -> JSON:
         return list(self.window)
@@ -148,18 +153,114 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
         sell_orders = sorted(order_depth.sell_orders.items())
 
-        if buy_orders and sell_orders:
-            popular_buy_price = max(buy_orders, key=lambda tup: tup[1])[0]
-            popular_sell_price = min(sell_orders, key=lambda tup: tup[1])[0]
-            return round((popular_buy_price + popular_sell_price) / 2)
+        if not buy_orders or not sell_orders:
+            return 10_000
 
-        if buy_orders:
-            return buy_orders[0][0]
+        best_bid, bid_vol = buy_orders[0]
+        best_ask, ask_vol = sell_orders[0]
+        ask_vol = -ask_vol
 
-        if sell_orders:
-            return sell_orders[0][0]
+        if bid_vol + ask_vol == 0:
+            fair = (best_bid + best_ask) / 2
+        else:
+            fair = (best_ask * bid_vol + best_bid * ask_vol) / (bid_vol + ask_vol)
 
-        return 10_000
+        return round(fair)
+
+    def act(self, state: TradingState) -> None:
+        true_value = self.get_true_value(state)
+
+        order_depth = state.order_depths[self.symbol]
+        buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
+        sell_orders = sorted(order_depth.sell_orders.items())
+
+        if not buy_orders or not sell_orders:
+            return
+
+        position = state.position.get(self.symbol, 0)
+        limit = self.limit
+
+        to_buy = limit - position
+        to_sell = limit + position
+
+        max_clip = 6
+        take_edge = 2
+        make_edge = 1
+
+        # ---------- TREND ----------
+        if not hasattr(self, "history"):
+            self.history:Any = deque(maxlen=10)
+
+        self.history.append(true_value)
+
+        trend = 0
+        if len(self.history) >= 5:
+            trend = self.history[-1] - self.history[0]
+
+        uptrend = trend > 0
+        downtrend = trend < 0
+
+        # ---------- FAIR ----------
+        skew_strength = 1.5
+
+        # bias inventory WITH trend
+        directional_bias = 0.3 if uptrend else (-0.3 if downtrend else 0)
+
+        fair = true_value - skew_strength * (position / limit) + directional_bias
+
+        # ---------- TAKE ----------
+        for price, volume in sell_orders:
+            if to_buy <= 0:
+                break
+
+            ask_size = -volume
+
+            if price <= fair - take_edge:
+                qty = min(max_clip, to_buy, ask_size)
+                self.buy(price, qty)
+                to_buy -= qty
+                position += qty
+
+        for price, volume in buy_orders:
+            if to_sell <= 0:
+                break
+
+            bid_size = volume
+
+            # DO NOT SELL IN UPTREND UNLESS VERY GOOD
+            threshold = fair + take_edge
+            if uptrend:
+                threshold = fair + 2 * take_edge
+
+            if price >= threshold:
+                qty = min(max_clip, to_sell, bid_size)
+                self.sell(price, qty)
+                to_sell -= qty
+                position -= qty
+
+        # ---------- PASSIVE ----------
+        best_bid = buy_orders[0][0]
+        best_ask = sell_orders[0][0]
+
+        # BUY SIDE (more aggressive in uptrend)
+        if to_buy > 0:
+            if uptrend:
+                bid_price = min(int(fair), best_bid + 1)
+            else:
+                bid_price = int(fair - make_edge)
+
+            qty = min(max_clip, to_buy)
+            self.buy(bid_price, qty)
+
+        # SELL SIDE (much more conservative in uptrend)
+        if to_sell > 0:
+            if uptrend:
+                ask_price = int(fair + 2 * make_edge)  # push higher
+            else:
+                ask_price = max(int(fair + make_edge), best_ask - 1)
+
+            qty = min(max_clip, to_sell)
+            self.sell(ask_price, qty)
 
 class OrchidsStrategy(Strategy):
     def act(self, state: TradingState) -> None:
