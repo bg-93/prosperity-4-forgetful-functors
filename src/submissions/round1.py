@@ -51,8 +51,10 @@ class Logger:
     def compress_listings(self, listings: dict[Symbol, Listing]) -> list[list[Any]]:
         compressed = []
         for listing in listings.values():
-            compressed.append([listing.symbol, listing.product, listing.denomination])
-
+            try:
+                compressed.append([listing["symbol"], listing["product"], listing["denomination"]]) # type: ignore
+            except (TypeError, KeyError):
+                compressed.append([listing.symbol, listing.product, listing.denomination])
         return compressed
 
     def compress_order_depths(self, order_depths: dict[Symbol, OrderDepth]) -> dict[Symbol, list[Any]]:
@@ -82,10 +84,7 @@ class Logger:
         for product, observation in observations.conversionObservations.items():
             conversion_observations[product] = [
                 observation.bidPrice,
-                observation.askPrice,
-                observation.transportFees,
-                observation.exportTariff,
-                observation.importTariff
+                observation.askPrice
             ]
 
         return [observations.plainValueObservations, conversion_observations]
@@ -302,5 +301,5 @@ class Trader:
 
         trader_data = json.dumps(new_trader_data, separators=(",", ":"))
 
-        logger.flush(state, orders, conversions, trader_data)
+
         return orders, conversions, trader_data
