@@ -249,10 +249,18 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
         sell_orders = sorted(order_depth.sell_orders.items())
 
-        popular_buy_price = max(buy_orders, key=lambda tup: tup[1])[0]
-        popular_sell_price = min(sell_orders, key=lambda tup: tup[1])[0]
+        if buy_orders and sell_orders:
+            popular_buy_price = max(buy_orders, key=lambda tup: tup[1])[0]
+            popular_sell_price = min(sell_orders, key=lambda tup: tup[1])[0]
+            return round((popular_buy_price + popular_sell_price) / 2)
 
-        return round((popular_buy_price + popular_sell_price) / 2)
+        if buy_orders:
+            return buy_orders[0][0]
+
+        if sell_orders:
+            return sell_orders[0][0]
+
+        return 10_000
 
 class OrchidsStrategy(Strategy):
     def act(self, state: TradingState) -> None:
