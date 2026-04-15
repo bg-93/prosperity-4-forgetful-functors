@@ -268,6 +268,9 @@ class OrchidsStrategy(Strategy):
         self.sell(max(int(obs.bidPrice - 0.5), int(buy_price + 1)), self.limit)
 
 class Trader:
+    def bid(self):
+        return 15
+
     def __init__(self) -> None:
         limits = {
             "ASH_COATED_OSMIUM": 80,
