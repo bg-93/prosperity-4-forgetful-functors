@@ -100,7 +100,7 @@ class MarketMakingStrategy(Strategy):
 
         # if we have enough position to buy, then place a bid that beats the most popular bid
         # by 1
-        if to_buy > 0:
+        if to_buy > 0 and buy_orders:
             popular_buy_price = max(buy_orders, key=lambda tup: tup[1])[0]
             price = min(max_buy_price, popular_buy_price + 1)
             self.buy(price, to_buy)
@@ -122,7 +122,7 @@ class MarketMakingStrategy(Strategy):
             self.sell(true_value + 2, quantity)
             to_sell -= quantity
 
-        if to_sell > 0:
+        if to_sell > 0 and sell_orders:
             popular_sell_price = min(sell_orders, key=lambda tup: tup[1])[0]
             price = max(min_sell_price, popular_sell_price - 1)
             self.sell(price, to_sell)
