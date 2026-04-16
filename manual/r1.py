@@ -28,6 +28,9 @@ def compute_clearing(bids: dict[int, int], asks: dict[int, int]) -> tuple[int, i
             best_volume = traded
             best_price = p
 
+    if best_price is None:
+        raise ValueError("No candidate prices found")
+
     return best_price, best_volume
 
 
@@ -181,8 +184,8 @@ result = simulate_order(
     bids=bids,
     asks=asks,
     my_side="buy",
-    my_price=33,
-    my_qty=110000,
+    my_price=30,
+    my_qty=5000,
     starting_position=0,
 )
 
@@ -205,8 +208,9 @@ for num in qty:
             starting_position=0,
         )
 
-        pos = result["ending_position"]
-        ret = pos*30 - price*num
+        filled = result["filled_qty"]
+        clearing_price = result["clearing_price"]
+        ret = filled * (30 - clearing_price)
 
         if(ret>maxReturn):
             maxReturn = ret
