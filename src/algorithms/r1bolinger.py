@@ -243,7 +243,7 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         variance = sum((p - mean_price) ** 2 for p in prices) / len(prices)
         std_price = math.sqrt(variance)
 
-        k = 2.0
+        k = 100.0
         upper_band = mean_price + k * std_price
         lower_band = mean_price - k * std_price
 

@@ -158,6 +158,7 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
 
         best_bid, bid_vol = buy_orders[0]
         best_ask, ask_vol = sell_orders[0]
+
         ask_vol = -ask_vol
 
         if bid_vol + ask_vol == 0:
@@ -174,6 +175,28 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
         sell_orders = sorted(order_depth.sell_orders.items())
 
+
+        mid = 0
+        microprice = 0
+        if not buy_orders and not sell_orders:
+            return
+
+        if not buy_orders:
+            best_ask, ask_vol = sell_orders[0]
+            mid = best_ask
+            microprice = best_ask
+
+        if not sell_orders:
+            best_bid, bid_vol = buy_orders[0]
+            mid = best_bid
+            microprice = best_bid
+
+        if buy_orders and sell_orders:
+            best_bid, bid_vol = buy_orders[0]
+            best_ask, ask_vol = sell_orders[0]
+            microprice = (best_ask * bid_vol + best_bid * (-ask_vol)) // (bid_vol - ask_vol)
+            mid = (best_bid + best_ask) // 2
+
         if not buy_orders or not sell_orders:
             return
 
@@ -183,30 +206,33 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         to_buy = limit - position
         to_sell = limit + position
 
-        max_clip = 10
-        take_edge = 100
-        make_edge = 100
+        max_clip = 80
+        take_edge = 1#1
+        make_edge = 1#1
 
         # ---------- TREND ----------
+
         if not hasattr(self, "history"):
-            self.history:Any = deque(maxlen=10)
+            self.history:Any = deque(maxlen=100)
 
-        self.history.append(true_value)
-
-        trend = 0
-        if len(self.history) >= 5:
-            trend = self.history[-1] - self.history[0]
-
-        uptrend = trend > 0
-        downtrend = trend < 0
+        uptrend = True
 
         # ---------- FAIR ----------
-        skew_strength = 1.5
+        self.history.append(mid)
 
-        # bias inventory WITH trend
-        directional_bias = 0.3 if uptrend else (-0.3 if downtrend else 0)
+        # momentum signal
+        momentum = 0
+        if len(self.history) >= 5:
+            momentum = (self.history[-1] - self.history[0])
 
-        fair = true_value - skew_strength * (position / limit) + directional_bias
+        fair = (
+            mid
+            +  0.485* momentum         # trend (MAIN DRIVER)  0.485
+            + 1 * (microprice - mid)  # orderbook signaln 0.1
+            - 0.95 * (position / limit)  # inventory control. 0.95
+        )
+
+
 
         # ---------- TAKE ----------
         for price, volume in sell_orders:
@@ -245,7 +271,7 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         # BUY SIDE (more aggressive in uptrend)
         if to_buy > 0:
             if uptrend:
-                bid_price = min(int(fair), best_bid + 1)
+                bid_price = best_bid + 1
             else:
                 bid_price = int(fair - make_edge)
 
@@ -255,7 +281,7 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         # SELL SIDE (much more conservative in uptrend)
         if to_sell > 0:
             if uptrend:
-                ask_price = int(fair + 2 * make_edge)  # push higher
+                ask_price = best_ask + 2 # push higher
             else:
                 ask_price = max(int(fair + make_edge), best_ask - 1)
 

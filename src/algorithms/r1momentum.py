@@ -207,8 +207,8 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         to_sell = limit + position
 
         max_clip = 80
-        take_edge = 2
-        make_edge = 1
+        take_edge = 1#1
+        make_edge = 1#1
 
         # ---------- TREND ----------
 
@@ -218,20 +218,21 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         uptrend = True
 
         # ---------- FAIR ----------
+        self.history.append(mid)
 
         # momentum signal
         momentum = 0
         if len(self.history) >= 5:
-            momentum = self.history[-1] - self.history[0]
+            momentum = (self.history[-1] - self.history[0])
 
         fair = (
             mid
-            + 0.4 * momentum         # trend (MAIN DRIVER)
-            + 0.3 * (microprice - mid)  # orderbook signal
-            - 1.2 * (position / limit)  # inventory control
+            +  0.485* momentum         # trend (MAIN DRIVER)  0.485
+            + 1 * (microprice - mid)  # orderbook signaln 0.1
+            - 0.95 * (position / limit)  # inventory control. 0.95
         )
 
-        self.history.append(fair)
+
 
         # ---------- TAKE ----------
         for price, volume in sell_orders:
