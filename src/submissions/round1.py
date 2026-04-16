@@ -1,4 +1,5 @@
 import json
+from typing import cast
 from abc import abstractmethod
 from collections import deque
 from typing import Any, TypeAlias
@@ -45,6 +46,8 @@ class MarketMakingStrategy(Strategy):
 
         self.window: deque[Any] = deque()
         self.window_size = 10
+
+
 
     @abstractmethod
     def get_true_value(self, state: TradingState) -> int:
@@ -169,7 +172,7 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         return round(fair)
 
     def act(self, state: TradingState) -> None:
-        true_value = self.get_true_value(state)
+        #true_value = self.get_true_value(state)
 
         order_depth = state.order_depths[self.symbol]
         buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
@@ -213,9 +216,9 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         # ---------- TREND ----------
 
         if not hasattr(self, "history"):
-            self.history:Any = deque(maxlen=100)
+            self.history:Any = deque(maxlen=200)
 
-        uptrend = True
+
 
         # ---------- FAIR ----------
         self.history.append(mid)
@@ -225,10 +228,13 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         if len(self.history) >= 5:
             momentum = (self.history[-1] - self.history[0])
 
+
+        uptrend = True
+
         fair = (
-            mid
-            +  0.485* momentum         # trend (MAIN DRIVER)  0.485
-            + 1 * (microprice - mid)  # orderbook signaln 0.1
+            5*mid
+            #+  0.485 * momentum         # trend (MAIN DRIVER)  0.485
+            + 0.1 * (microprice - mid)  # orderbook signaln 0.1
             - 0.95 * (position / limit)  # inventory control. 0.95
         )
 
@@ -279,14 +285,15 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
             self.buy(bid_price, qty)
 
         # SELL SIDE (much more conservative in uptrend)
-        if to_sell > 0:
+        '''if to_sell > 0:
             if uptrend:
                 ask_price = best_ask + 2 # push higher
             else:
                 ask_price = max(int(fair + make_edge), best_ask - 1)
 
             qty = min(max_clip, to_sell)
-            self.sell(ask_price, qty)
+            self.sell(ask_price, qty)'''
+
 
 class Trader:
     def bid(self):
