@@ -181,9 +181,36 @@ result = simulate_order(
     bids=bids,
     asks=asks,
     my_side="buy",
-    my_price=30,
-    my_qty=10000,
+    my_price=33,
+    my_qty=110000,
     starting_position=0,
 )
 
-print(result)
+#print(result)
+
+qty = list(range(1,100001))
+prices = [30,29,28,27]
+
+maxReturn = 0
+maxPrice = 0
+maxQty = 0
+for num in qty:
+    for price in prices:
+        result = simulate_order(
+            bids=bids,
+            asks=asks,
+            my_side="buy",
+            my_price=price,
+            my_qty=num,
+            starting_position=0,
+        )
+
+        pos = result["ending_position"]
+        ret = pos*30 - price*num
+
+        if(ret>maxReturn):
+            maxReturn = ret
+            maxPrice = price
+            maxQty = num
+
+print(f'bidding at ${maxPrice} and quantity: {maxQty} and return: {maxReturn}')
