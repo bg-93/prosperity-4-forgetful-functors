@@ -183,9 +183,9 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         to_buy = limit - position
         to_sell = limit + position
 
-        max_clip = 6
-        take_edge = 2
-        make_edge = 1
+        max_clip = 10
+        take_edge = 100
+        make_edge = 100
 
         # ---------- TREND ----------
         if not hasattr(self, "history"):
@@ -261,18 +261,6 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
 
             qty = min(max_clip, to_sell)
             self.sell(ask_price, qty)
-
-class OrchidsStrategy(Strategy):
-    def act(self, state: TradingState) -> None:
-        position = state.position.get(self.symbol, 0)
-        self.convert(-1 * position)
-
-        obs = state.observations.conversionObservations.get(self.symbol, None)
-        if obs is None:
-            return
-
-        buy_price = obs.askPrice + obs.transportFees + obs.importTariff
-        self.sell(max(int(obs.bidPrice - 0.5), int(buy_price + 1)), self.limit)
 
 class Trader:
     def bid(self):
