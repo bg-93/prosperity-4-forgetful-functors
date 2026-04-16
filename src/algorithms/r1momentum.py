@@ -206,7 +206,7 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
         to_buy = limit - position
         to_sell = limit + position
 
-        max_clip = 5
+        max_clip = 80
         take_edge = 2
         make_edge = 1
 
