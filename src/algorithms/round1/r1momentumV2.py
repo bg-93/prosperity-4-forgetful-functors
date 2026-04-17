@@ -111,7 +111,7 @@ class MarketMakingStrategy(Strategy):
         if to_buy > 0 and buy_orders:
             popular_buy_price = buy_orders[0][0]
             price = min(max_buy_price, popular_buy_price + 1)
-            self.buy(price, bid_size)
+            self.buy(price, min(bid_size,to_buy))
 
         # the following is symmetric for sell side
         for price, volume in buy_orders:
@@ -133,7 +133,7 @@ class MarketMakingStrategy(Strategy):
         if to_sell > 0 and sell_orders:
             popular_sell_price = sell_orders[0][0]
             price = max(min_sell_price, popular_sell_price - 1)
-            self.sell(price, ask_size)
+            self.sell(price, min(ask_size,to_sell))
 
     def save(self) -> JSON:
         return list(self.window)
@@ -150,6 +150,141 @@ class AshCoatedOsmiumStrategy(MarketMakingStrategy):
         return 10_000
 
 class IntarianPepperRootStrategy(MarketMakingStrategy):
+    def act(self, state: TradingState) -> None:
+        order_depth = state.order_depths[self.symbol]
+        buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
+        sell_orders = sorted(order_depth.sell_orders.items())
+
+        if not buy_orders or not sell_orders:
+            return
+
+        best_bid, bid_vol = buy_orders[0]
+        best_ask, ask_vol = sell_orders[0]
+        ask_size = -ask_vol
+
+        mid = (best_bid + best_ask) / 2
+        if bid_vol + ask_size == 0:
+            microprice = mid
+        else:
+            microprice = (best_ask * bid_vol + best_bid * ask_size) / (bid_vol + ask_size)
+
+        if not hasattr(self, "history"):
+            self.history = deque(maxlen=80)
+
+        self.history.append(int(round(mid)))
+
+        position = state.position.get(self.symbol, 0)
+        limit = self.limit
+        to_buy = limit - position
+        to_sell = limit + position
+
+        # -------- MOMENTUM --------
+        short_mom = 0.0
+        med_mom = 0.0
+        long_mom = 0.0
+
+        if len(self.history) >= 5:
+            short_mom = self.history[-1] - self.history[-5]
+        if len(self.history) >= 12:
+            med_mom = self.history[-1] - self.history[-12]
+        if len(self.history) >= 25:
+            long_mom = self.history[-1] - self.history[-25]
+
+        momentum = 0.65 * short_mom + 0.25 * med_mom + 0.10 * long_mom
+
+        # -------- VERY AGGRESSIVE FAIR --------
+        fair = (
+            mid
+            + 1.2 * momentum
+            + 0.30 * (microprice - mid)
+            - 0.005 * position
+        )
+
+        # -------- VERY AGGRESSIVE BUY SIZE --------
+        if momentum >= 6:
+            buy_clip = 80
+        elif momentum >= 3:
+            buy_clip = 50
+        elif momentum >= 1:
+            buy_clip = 35
+        else:
+            buy_clip = 20
+
+        # keep buying until basically full
+        can_buy = position <  limit
+
+        # -------- TAKE ASKS HARD --------
+        if can_buy:
+            # willing to pay above fair in strong trend
+            take_threshold = fair + 8
+            if momentum >= 4:
+                take_threshold = fair + 3
+            if momentum >= 7:
+                take_threshold = fair + 4
+
+            for price, volume in sell_orders:
+                if to_buy <= 0:
+                    break
+
+                ask_qty = -volume
+                if price <= take_threshold:
+                    qty = min(buy_clip, to_buy, ask_qty)
+                    if qty > 0:
+                        self.buy(price, qty)
+                        to_buy -= qty
+                        position += qty
+
+        # recompute
+        to_buy = limit - position
+        to_sell = limit + position
+
+        # -------- POST AGGRESSIVE BID --------
+        if to_buy > 0 and can_buy:
+            spread = best_ask - best_bid
+
+            if momentum >= 5:
+                bid_price = best_ask      # join the ask / cross next if available
+            elif spread >= 2:
+                bid_price = best_bid + 1  # improve bid
+            else:
+                bid_price = best_bid      # stay at best bid if tight
+
+            qty = min(buy_clip, to_buy)
+            if qty > 0:
+                self.buy(int(round(bid_price)), qty)
+
+        # -------- ONLY TINY INVENTORY BLEED --------
+        # do not meaningfully sell unless almost max long
+        if position >= int(0.95 * limit) and to_sell > 0:
+            ask_price = best_ask + 3
+            qty = min(8, position, to_sell)
+            if qty > 0:
+                self.sell(ask_price, qty)
+
+    def save(self) -> JSON:
+        return {
+            "window": list(self.window),
+            "history": list(self.history),
+        }
+
+    def load(self, data: JSON) -> None:
+        if isinstance(data, dict):
+            window_data = data.get("window", [])
+            history_data = data.get("history", [])
+
+            if isinstance(window_data, list):
+                self.window = deque(window_data, maxlen=self.window_size)
+            else:
+                self.window = deque([], maxlen=self.window_size)
+
+            if isinstance(history_data, list):
+                self.history = deque((int(x) for x in history_data), maxlen=80)
+            else:
+                self.history = deque([], maxlen=80)
+        else:
+            self.window = deque([], maxlen=self.window_size)
+            self.history = deque([], maxlen=80)
+
     def get_true_value(self, state: TradingState) -> int:
         order_depth = state.order_depths[self.symbol]
 
@@ -164,135 +299,10 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
 
         ask_vol = -ask_vol
 
-        if bid_vol + ask_vol == 0:
-            fair = (best_bid + best_ask) / 2
-        else:
-            fair = (best_ask * bid_vol + best_bid * ask_vol) / (bid_vol + ask_vol)
+        fair = (best_bid + best_ask) / 2
 
         return round(fair)
 
-    def act(self, state: TradingState) -> None:
-        #true_value = self.get_true_value(state)
-
-        order_depth = state.order_depths[self.symbol]
-        buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
-        sell_orders = sorted(order_depth.sell_orders.items())
-
-
-        mid = 0
-        microprice = 0
-        if not buy_orders and not sell_orders:
-            return
-
-        if not buy_orders:
-            best_ask, ask_vol = sell_orders[0]
-            mid = best_ask
-            microprice = best_ask
-
-        if not sell_orders:
-            best_bid, bid_vol = buy_orders[0]
-            mid = best_bid
-            microprice = best_bid
-
-        if buy_orders and sell_orders:
-            best_bid, bid_vol = buy_orders[0]
-            best_ask, ask_vol = sell_orders[0]
-            microprice = (best_ask * bid_vol + best_bid * (-ask_vol)) // (bid_vol - ask_vol)
-            mid = (best_bid + best_ask) // 2
-
-        if not buy_orders or not sell_orders:
-            return
-
-        position = state.position.get(self.symbol, 0)
-        limit = self.limit
-
-        to_buy = limit - position
-        to_sell = limit + position
-
-        max_clip = 80
-        take_edge = 1#1
-        make_edge = 1#1
-
-        # ---------- TREND ----------
-
-        if not hasattr(self, "history"):
-            self.history:Any = deque(maxlen=200)
-
-
-
-        # ---------- FAIR ----------
-        self.history.append(mid)
-
-        # momentum signal
-        momentum = 0
-        if len(self.history) >= 5:
-            momentum = (self.history[-1] - self.history[0])
-
-
-        uptrend = True
-
-        fair = (
-            5*mid
-            #+  0.485 * momentum         # trend (MAIN DRIVER)  0.485
-            + 0.1 * (microprice - mid)  # orderbook signaln 0.1
-            - 0.95 * (position / limit)  # inventory control. 0.95
-        )
-
-
-
-        # ---------- TAKE ----------
-        for price, volume in sell_orders:
-            if to_buy <= 0:
-                break
-
-            ask_size = -volume
-
-            if price <= fair - take_edge:
-                qty = min(max_clip, to_buy, ask_size)
-                self.buy(price, qty)
-                to_buy -= qty
-                position += qty
-
-        for price, volume in buy_orders:
-            if to_sell <= 0:
-                break
-
-            bid_size = volume
-
-            # DO NOT SELL IN UPTREND UNLESS VERY GOOD
-            threshold = fair + take_edge
-            if uptrend:
-                threshold = fair + 2 * take_edge
-
-            if price >= threshold:
-                qty = min(max_clip, to_sell, bid_size)
-                self.sell(price, qty)
-                to_sell -= qty
-                position -= qty
-
-        # ---------- PASSIVE ----------
-        best_bid = buy_orders[0][0]
-        best_ask = sell_orders[0][0]
-
-        # BUY SIDE (more aggressive in uptrend)
-        if to_buy > 0:
-            if uptrend:
-                bid_price = best_bid + 1
-            else:
-                bid_price = int(fair - make_edge)
-
-            qty = min(max_clip, to_buy)
-            self.buy(bid_price, qty)
-
-        # SELL SIDE (much more conservative in uptrend)
-        '''if to_sell > 0:
-            if uptrend:
-                ask_price = best_ask + 2 # push higher
-            else:
-                ask_price = max(int(fair + make_edge), best_ask - 1)
-
-            qty = min(max_clip, to_sell)
-            self.sell(ask_price, qty)'''
 
 
 class Trader:
