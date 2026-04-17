@@ -163,7 +163,7 @@ def simulate_order(
     }
 
 
-# ---------------- EXAMPLE ----------------
+# ---------------- DRYLAND FLAX ----------------
 
 bids = {
     30: 30000,
@@ -179,7 +179,7 @@ asks = {
     33: 30000,
 }
 
-# Example: you place a buy order for 6000 at price 29
+# Example: you place a buy order for 5000 at price 30
 result = simulate_order(
     bids=bids,
     asks=asks,
@@ -189,7 +189,7 @@ result = simulate_order(
     starting_position=0,
 )
 
-#print(result)
+print(result)
 
 qty = list(range(1,100001))
 prices = [30,29,28,27]
@@ -217,4 +217,69 @@ for num in qty:
             maxPrice = price
             maxQty = num
 
-print(f'bidding at ${maxPrice} and quantity: {maxQty} and return: {maxReturn}')
+print(f'DRYLAND: bidding at ${maxPrice} and quantity: {maxQty} and return: {maxReturn}')
+
+#_________________ EMBER MUSHROOM
+
+
+bids1 = {
+    20: 43000,
+    19: 17000,
+    18: 6000,
+    17: 5000,
+    16: 10000,
+    15: 5000,
+    14: 10000,
+    13: 7000
+}
+
+asks1 = {
+    12: 20000,
+    13: 25000,
+    14: 35000,
+    15: 6000,
+    16: 5000,
+    17: 0,
+    18: 10000,
+    19: 12000
+}
+
+qty1 = list(range(1,100001))
+prices1 = [22,21,20,19,18,17,16,15,14,13,12,11]
+
+maxReturn1 = 0
+maxPrice1 = 0
+maxQty1 = 0
+for num in qty1:
+    for price in prices1:
+        result = simulate_order(
+            bids=bids1,
+            asks=asks1,
+            my_side="buy",
+            my_price=price,
+            my_qty=num,
+            starting_position=0,
+        )
+
+        filled = result["filled_qty"]
+        clearing_price = result["clearing_price"]
+        ret = filled * (20 - clearing_price - 0.05)
+
+        if(ret>maxReturn1):
+            maxReturn1 = ret
+            maxPrice1 = price
+            maxQty1 = num
+        elif(ret==maxReturn):
+            if price < maxPrice1:
+                maxPrice1 = price
+                maxQty1 = num
+
+print(f'MUSHROOM: bidding at ${maxPrice1} and quantity: {maxQty1} and return: {maxReturn1}')
+print(simulate_order(
+            bids=bids1,
+            asks=asks1,
+            my_side="buy",
+            my_price=20,
+            my_qty=19999,
+            starting_position=0,
+        ))
