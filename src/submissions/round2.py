@@ -63,6 +63,8 @@ class AshCoatedOsmiumStrategy(Strategy):
         bid_size = max(0, min(max_clip, to_buy))
         ask_size = max(0, min(max_clip, to_sell))
 
+        skew = position//self.limit
+        true_value = true_value + skew
         #defining our max and min buy and sell prices around true value
         max_buy_price = true_value - 1 if position > self.limit * 0.5 else true_value
         min_sell_price = true_value + 1 if position < self.limit * -0.5 else true_value
@@ -166,7 +168,7 @@ class IntarianPepperRootStrategy(Strategy):
 
         # -------- VERY AGGRESSIVE BUY SIZE --------
         if momentum >= 6:
-            buy_clip = 80
+            buy_clip = 60
         elif momentum >= 3:
             buy_clip = 50
         elif momentum >= 1:
@@ -182,9 +184,9 @@ class IntarianPepperRootStrategy(Strategy):
             # willing to pay above fair in strong trend
             take_threshold = fair + 8
             if momentum >= 4:
-                take_threshold = fair + 3
+                take_threshold = fair + 5
             if momentum >= 7:
-                take_threshold = fair + 4
+                take_threshold = fair + 1 
 
             for price, volume in sell_orders:
                 if to_buy <= 0:
@@ -216,6 +218,23 @@ class IntarianPepperRootStrategy(Strategy):
             qty = min(buy_clip, to_buy)
             if qty > 0:
                 self.buy(int(round(bid_price)), qty)
+
+
+        #cheap asks/bids
+        # picking out cheap ask prices
+        for price, volume in sell_orders:
+            if to_buy > 0 and price <= self.history[-1]:
+                quantity = min(to_buy, -volume)
+                self.buy(price, quantity)
+                to_buy -= quantity
+
+        for price, volume in buy_orders:
+            if to_sell > 0 and price >= self.history[-1]:
+                quantity = min(to_sell, volume)
+                self.sell(price, quantity)
+                to_sell -= quantity
+
+
 
         # -------- ONLY TINY INVENTORY BLEED --------
         # do not meaningfully sell unless almost max long
