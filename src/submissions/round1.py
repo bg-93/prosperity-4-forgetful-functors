@@ -85,6 +85,12 @@ class MarketMakingStrategy(Strategy):
         max_buy_price = true_value - 1 if position > self.limit * 0.5 else true_value
         min_sell_price = true_value + 1 if position < self.limit * -0.5 else true_value
 
+        #taking at fair value when position limit very high
+        for price, volume in sell_orders:
+            if to_buy<=5 and price == true_value:
+                self.buy(price, volume//2)
+                to_buy -= volume//2
+
         # picking out cheap ask prices
         for price, volume in sell_orders:
             if to_buy > 0 and price <= max_buy_price:
@@ -112,6 +118,12 @@ class MarketMakingStrategy(Strategy):
             popular_buy_price = buy_orders[0][0]
             price = min(max_buy_price, popular_buy_price + 1)
             self.buy(price, min(bid_size,to_buy))
+
+        #taking at fair value when position limit very high
+        for price, volume in buy_orders:
+            if to_sell<=5 and price == true_value:
+                self.sell(price, volume//2)
+                to_sell -= volume//2
 
         # the following is symmetric for sell side
         for price, volume in buy_orders:
@@ -169,7 +181,7 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
             microprice = (best_ask * bid_vol + best_bid * ask_size) / (bid_vol + ask_size)
 
         if not hasattr(self, "history"):
-            self.history = deque(maxlen=80)
+            self.history :Any = deque(maxlen=80)
 
         self.history.append(int(round(mid)))
 
@@ -278,7 +290,7 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
                 self.window = deque([], maxlen=self.window_size)
 
             if isinstance(history_data, list):
-                self.history = deque((int(x) for x in history_data), maxlen=80)
+                self.history = deque((int(cast(Any, x)) for x in history_data), maxlen=80)
             else:
                 self.history = deque([], maxlen=80)
         else:
