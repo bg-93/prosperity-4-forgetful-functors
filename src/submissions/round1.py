@@ -212,15 +212,17 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
 
         # keep buying until basically full
         can_buy = position <  limit
+        if momentum < -100:
+            can_buy = False
 
         # -------- TAKE ASKS HARD --------
         if can_buy:
             # willing to pay above fair in strong trend
-            take_threshold = fair + 8
+            take_threshold = fair + 2
             if momentum >= 4:
                 take_threshold = fair + 3
             if momentum >= 7:
-                take_threshold = fair + 4
+                take_threshold = fair + 8
 
             for price, volume in sell_orders:
                 if to_buy <= 0:

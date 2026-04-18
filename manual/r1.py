@@ -263,7 +263,7 @@ for num in qty1:
 
         filled = result["filled_qty"]
         clearing_price = result["clearing_price"]
-        ret = filled * (20 - clearing_price - 0.05)
+        ret = filled * (20 - clearing_price - 0.1)
 
         if(ret>maxReturn1):
             maxReturn1 = ret
