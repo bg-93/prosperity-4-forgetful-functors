@@ -69,8 +69,8 @@ class MarketMakingStrategy(Strategy):
 
         max_clip = 10
 
-        bid_size = max(0, min(max_clip, self.limit - position))
-        ask_size = max(0, min(max_clip, self.limit + position))
+        bid_size = max(0, min(max_clip, to_buy))
+        ask_size = max(0, min(max_clip, to_sell))
 
         #array appending whether or not position has pinned to the limit
         self.window.append(abs(position) == self.limit)
@@ -212,17 +212,15 @@ class IntarianPepperRootStrategy(MarketMakingStrategy):
 
         # keep buying until basically full
         can_buy = position <  limit
-        if momentum < -100:
-            can_buy = False
 
         # -------- TAKE ASKS HARD --------
         if can_buy:
             # willing to pay above fair in strong trend
-            take_threshold = fair + 2
+            take_threshold = fair + 8
             if momentum >= 4:
                 take_threshold = fair + 3
             if momentum >= 7:
-                take_threshold = fair + 8
+                take_threshold = fair + 4
 
             for price, volume in sell_orders:
                 if to_buy <= 0:
